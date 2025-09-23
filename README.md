@@ -1,4 +1,4 @@
-# Levo Schema API – Take Home Assignment ✅
+# Levo Schema API – Take Home Assignment
 
 A minimal FastAPI-based REST API for uploading, validating, versioning, and retrieving OpenAPI spec files (`.json` or `.yaml`) at the application and optional service level — inspired by Levo CLI (`levo import`, `levo test`).
 
@@ -6,15 +6,15 @@ A minimal FastAPI-based REST API for uploading, validating, versioning, and retr
 
 ## 🚀 Features
 
-- ✅ Upload OpenAPI 3.x specs (YAML or JSON)
-- ✅ Validate file format and version
-- ✅ Version schema uploads per app/service
-- ✅ Store original files in `./data/`
-- ✅ Track uploads in `levo.db` (SQLite)
-- ✅ Retrieve latest or specific versions
-- ✅ List all uploaded versions
-- ✅ View data via web GUI (`sqlite-web`)
-- ✅ Run unit tests with `pytest`
+- Upload OpenAPI 3.x specs (YAML or JSON)
+- Validate file format and version
+- Version schema uploads per app/service
+- Store original files in `./data/`
+- Track uploads in `levo.db` (SQLite)
+- Retrieve latest or specific versions
+- List all uploaded versions
+- View data via web GUI (`sqlite-web`)
+- Run unit tests with `pytest`
 
 ---
 
