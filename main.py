@@ -31,8 +31,8 @@ def get_db():
 
 @app.get("/healthz")
 def health():
+    print("Health check endpoint called")
     return {"status": "ok"}
-
 
 @app.post("/schemas/upload")
 async def upload_schema(
@@ -41,26 +41,24 @@ async def upload_schema(
     spec: UploadFile = File(...),
     db: Session = Depends(get_db),
 ):
+    print(f"Upload schema called with application: {application}, service: {service}")
     raw = await spec.read()
 
-    # Step 1: Parse and validate OpenAPI
     try:
         media_type, parsed_obj = detect_and_load_spec(raw)
         validate_openapi(parsed_obj)
     except Exception as e:
+        print(f"Invalid OpenAPI spec: {e}")
         raise HTTPException(status_code=400, detail=f"Invalid OpenAPI spec: {e}")
 
-    # Step 2: Compute checksum
     checksum = sha256_hex(raw)
 
-    # Step 3: Get or create application
     app_obj = db.query(Application).filter_by(name=application).first()
     if not app_obj:
         app_obj = Application(name=application)
         db.add(app_obj)
         db.flush()
 
-    # Step 4: Get or create service (if provided)
     svc = None
     if service:
         svc = db.query(Service).filter_by(application_id=app_obj.id, name=service).first()
@@ -69,7 +67,6 @@ async def upload_schema(
             db.add(svc)
             db.flush()
 
-    # Step 5: Get next version
     existing_versions = (
         db.query(SchemaVersion)
         .filter_by(application_id=app_obj.id, service_id=svc.id if svc else None)
@@ -77,13 +74,11 @@ async def upload_schema(
     )
     version = existing_versions + 1
 
-    # Step 6: Save file
     ext = ".json" if media_type == "application/json" else ".yaml"
     folder = target_folder(DATA_DIR, application, service)
     file_path = folder / f"v{version}{ext}"
     file_path.write_bytes(raw)
 
-    # Step 7: Insert schema metadata into DB
     record = SchemaVersion(
         application_id=app_obj.id,
         service_id=svc.id if svc else None,
@@ -96,8 +91,7 @@ async def upload_schema(
     db.add(record)
     db.flush()
 
-    # Step 8: Return result
-    return {
+    result = {
         "application": application,
         "service": service,
         "version": version,
@@ -106,6 +100,8 @@ async def upload_schema(
         "path": str(file_path),
         "uploaded_at": record.uploaded_at.isoformat(),
     }
+    print(f"Schema uploaded successfully: {result}")
+    return result
 
 @app.get("/schemas")
 def get_schema(
@@ -114,19 +110,19 @@ def get_schema(
     version: int = Query(default=None),
     db: Session = Depends(get_db)
 ):
-    # Step 1: Find application
+    print(f"Get schema called with application: {application}, service: {service}, version: {version}")
     app_obj = db.query(Application).filter_by(name=application).first()
     if not app_obj:
+        print("Application not found")
         raise HTTPException(status_code=404, detail="Application not found")
 
-    # Step 2: Find service (if provided)
     svc = None
     if service:
         svc = db.query(Service).filter_by(application_id=app_obj.id, name=service).first()
         if not svc:
+            print("Service not found")
             raise HTTPException(status_code=404, detail="Service not found")
 
-    # Step 3: Get specific or latest version
     query = db.query(SchemaVersion).filter_by(
         application_id=app_obj.id,
         service_id=svc.id if svc else None
@@ -139,9 +135,10 @@ def get_schema(
 
     schema = query.first()
     if not schema:
+        print("Schema not found")
         raise HTTPException(status_code=404, detail="Schema not found")
 
-    # Step 4: Return file response
+    print(f"Schema retrieved successfully: {schema.path}")
     return FileResponse(
         path=schema.path,
         media_type=schema.media_type,
@@ -154,26 +151,25 @@ def list_versions(
     service: str = Query(default=None),
     db: Session = Depends(get_db)
 ):
-    # Step 1: Find application
+    print(f"List versions called with application: {application}, service: {service}")
     app_obj = db.query(Application).filter_by(name=application).first()
     if not app_obj:
+        print("Application not found")
         raise HTTPException(status_code=404, detail="Application not found")
 
-    # Step 2: Find service (if provided)
     svc = None
     if service:
         svc = db.query(Service).filter_by(application_id=app_obj.id, name=service).first()
         if not svc:
+            print("Service not found")
             raise HTTPException(status_code=404, detail="Service not found")
 
-    # Step 3: Get all schema versions
     versions = db.query(SchemaVersion).filter_by(
         application_id=app_obj.id,
         service_id=svc.id if svc else None
     ).order_by(SchemaVersion.version.asc()).all()
 
-    # Step 4: Build response
-    return {
+    result = {
         "application": application,
         "service": service,
         "versions": [
@@ -187,3 +183,5 @@ def list_versions(
             for v in versions
         ]
     }
+    print(f"Versions listed successfully: {result}")
+    return result

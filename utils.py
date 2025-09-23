@@ -5,21 +5,24 @@ from pathlib import Path
 from typing import Any, Tuple
 
 
-def detect_and_load_spec(raw_bytes: bytes) -> Tuple[str, Any]:
+def detect_and_load_spec(raw_bytes):
     try:
-        obj = json.loads(raw_bytes.decode("utf-8"))
-        return "application/json", obj
-    except Exception:
+        text = raw_bytes.decode("utf-8")
+    except UnicodeDecodeError as e:
+        raise ValueError("Uploaded file must be UTF-8 encoded.") from e
+
+    try:
+        return "application/json", json.loads(text)
+    except json.JSONDecodeError:
         pass
 
     try:
-        obj = yaml.safe_load(raw_bytes.decode("utf-8"))
-        return "application/yaml", obj
-    except Exception as e:
+        return "application/yaml", yaml.safe_load(text)
+    except yaml.YAMLError as e:
         raise ValueError("Uploaded file is not valid JSON or YAML.") from e
 
 
-def validate_openapi(obj: Any) -> None:
+def validate_openapi(obj):
     if not isinstance(obj, dict):
         raise ValueError("Spec must be a JSON/YAML object.")
 
@@ -31,11 +34,11 @@ def validate_openapi(obj: Any) -> None:
         raise ValueError(f"Only OpenAPI 3.x specs are supported (got: {openapi_version})")
 
 
-def sha256_hex(raw_bytes: bytes) -> str:
+def sha256_hex(raw_bytes):
     return hashlib.sha256(raw_bytes).hexdigest()
 
 
-def target_folder(base_dir: Path, application: str, service: str | None) -> Path:
+def target_folder(base_dir, application, service):
     safe_app = application.strip().replace("/", "_")
     safe_service = service.strip().replace("/", "_") if service else "_app_"
     folder = base_dir / safe_app / safe_service
