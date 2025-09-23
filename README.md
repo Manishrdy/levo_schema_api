@@ -1,6 +1,6 @@
 # Levo Schema API – Take Home Assignment
 
-A minimal FastAPI-based REST API for uploading, validating, versioning, and retrieving OpenAPI spec files (`.json` or `.yaml`) at the application and optional service level — inspired by Levo CLI (`levo import`, `levo test`).
+A minimal FastAPI-based REST API for uploading, validating, versioning, and retrieving OpenAPI spec files (`.json` or `.yaml`) at the application and optional service level.
 
 ---
 
