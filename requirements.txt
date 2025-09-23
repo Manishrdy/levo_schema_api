@@ -1,0 +1,8 @@
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+SQLAlchemy==2.0.34
+PyYAML==6.0.2
+openapi-spec-validator==0.7.1
+python-multipart==0.0.9
+pytest==8.3.3
+openapi-spec-validator==0.7.1

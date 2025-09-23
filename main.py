@@ -1,0 +1,189 @@
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, status, Depends
+from sqlalchemy.orm import Session
+from datetime import datetime
+from pathlib import Path
+
+from database import SessionLocal
+from models import Base, Application, Service, SchemaVersion
+from utils import detect_and_load_spec, validate_openapi, sha256_hex, target_folder
+
+from fastapi.responses import FileResponse
+from fastapi import Query
+
+from database import engine
+Base.metadata.create_all(bind=engine)
+
+app = FastAPI(title="Levo Schema API", version="0.1.0")
+
+DATA_DIR = Path("data")
+
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+        db.commit()
+    except:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
+@app.get("/healthz")
+def health():
+    return {"status": "ok"}
+
+
+@app.post("/schemas/upload")
+async def upload_schema(
+    application: str = Form(...),
+    service: str = Form(None),
+    spec: UploadFile = File(...),
+    db: Session = Depends(get_db),
+):
+    raw = await spec.read()
+
+    # Step 1: Parse and validate OpenAPI
+    try:
+        media_type, parsed_obj = detect_and_load_spec(raw)
+        validate_openapi(parsed_obj)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid OpenAPI spec: {e}")
+
+    # Step 2: Compute checksum
+    checksum = sha256_hex(raw)
+
+    # Step 3: Get or create application
+    app_obj = db.query(Application).filter_by(name=application).first()
+    if not app_obj:
+        app_obj = Application(name=application)
+        db.add(app_obj)
+        db.flush()
+
+    # Step 4: Get or create service (if provided)
+    svc = None
+    if service:
+        svc = db.query(Service).filter_by(application_id=app_obj.id, name=service).first()
+        if not svc:
+            svc = Service(application_id=app_obj.id, name=service)
+            db.add(svc)
+            db.flush()
+
+    # Step 5: Get next version
+    existing_versions = (
+        db.query(SchemaVersion)
+        .filter_by(application_id=app_obj.id, service_id=svc.id if svc else None)
+        .count()
+    )
+    version = existing_versions + 1
+
+    # Step 6: Save file
+    ext = ".json" if media_type == "application/json" else ".yaml"
+    folder = target_folder(DATA_DIR, application, service)
+    file_path = folder / f"v{version}{ext}"
+    file_path.write_bytes(raw)
+
+    # Step 7: Insert schema metadata into DB
+    record = SchemaVersion(
+        application_id=app_obj.id,
+        service_id=svc.id if svc else None,
+        version=version,
+        path=str(file_path),
+        media_type=media_type,
+        checksum=checksum,
+        uploaded_at=datetime.utcnow(),
+    )
+    db.add(record)
+    db.flush()
+
+    # Step 8: Return result
+    return {
+        "application": application,
+        "service": service,
+        "version": version,
+        "media_type": media_type,
+        "checksum": checksum,
+        "path": str(file_path),
+        "uploaded_at": record.uploaded_at.isoformat(),
+    }
+
+@app.get("/schemas")
+def get_schema(
+    application: str = Query(...),
+    service: str = Query(default=None),
+    version: int = Query(default=None),
+    db: Session = Depends(get_db)
+):
+    # Step 1: Find application
+    app_obj = db.query(Application).filter_by(name=application).first()
+    if not app_obj:
+        raise HTTPException(status_code=404, detail="Application not found")
+
+    # Step 2: Find service (if provided)
+    svc = None
+    if service:
+        svc = db.query(Service).filter_by(application_id=app_obj.id, name=service).first()
+        if not svc:
+            raise HTTPException(status_code=404, detail="Service not found")
+
+    # Step 3: Get specific or latest version
+    query = db.query(SchemaVersion).filter_by(
+        application_id=app_obj.id,
+        service_id=svc.id if svc else None
+    )
+
+    if version:
+        query = query.filter_by(version=version)
+    else:
+        query = query.order_by(SchemaVersion.version.desc()).limit(1)
+
+    schema = query.first()
+    if not schema:
+        raise HTTPException(status_code=404, detail="Schema not found")
+
+    # Step 4: Return file response
+    return FileResponse(
+        path=schema.path,
+        media_type=schema.media_type,
+        filename=schema.path.split("/")[-1]
+    )
+
+@app.get("/schemas/versions")
+def list_versions(
+    application: str = Query(...),
+    service: str = Query(default=None),
+    db: Session = Depends(get_db)
+):
+    # Step 1: Find application
+    app_obj = db.query(Application).filter_by(name=application).first()
+    if not app_obj:
+        raise HTTPException(status_code=404, detail="Application not found")
+
+    # Step 2: Find service (if provided)
+    svc = None
+    if service:
+        svc = db.query(Service).filter_by(application_id=app_obj.id, name=service).first()
+        if not svc:
+            raise HTTPException(status_code=404, detail="Service not found")
+
+    # Step 3: Get all schema versions
+    versions = db.query(SchemaVersion).filter_by(
+        application_id=app_obj.id,
+        service_id=svc.id if svc else None
+    ).order_by(SchemaVersion.version.asc()).all()
+
+    # Step 4: Build response
+    return {
+        "application": application,
+        "service": service,
+        "versions": [
+            {
+                "version": v.version,
+                "uploaded_at": v.uploaded_at.isoformat(),
+                "media_type": v.media_type,
+                "checksum": v.checksum,
+                "path": v.path
+            }
+            for v in versions
+        ]
+    }
