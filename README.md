@@ -4,7 +4,7 @@ A minimal FastAPI-based REST API for uploading, validating, versioning, and retr
 
 ---
 
-## 🚀 Features
+## Features
 
 - Upload OpenAPI 3.x specs (YAML or JSON)
 - Validate file format and version
@@ -18,7 +18,7 @@ A minimal FastAPI-based REST API for uploading, validating, versioning, and retr
 
 ---
 
-## ⚙️ Setup
+## Setup
 
 ### 1. Clone and install
 
